@@ -3,6 +3,7 @@ import { createEvent, supabase } from './supabaseClient';
 import { Auth } from '@supabase/auth-ui-solid';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { SolidMarkdown } from 'solid-markdown';
+import * as Sentry from '@sentry/browser';
 
 function App() {
   const [jokes, setJokes] = createSignal([]);
@@ -15,12 +16,17 @@ function App() {
   const [markdownText, setMarkdownText] = createSignal('');
 
   const checkUserSignedIn = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      setUser(user);
-      setCurrentPage('homePage');
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+        setCurrentPage('homePage');
+      }
+    } catch (error) {
+      console.error('Error checking user:', error);
+      Sentry.captureException(error);
     }
   };
 
@@ -43,17 +49,26 @@ function App() {
   });
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setCurrentPage('login');
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setCurrentPage('login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      Sentry.captureException(error);
+    }
   };
 
   const fetchJokes = async () => {
     setLoading(true);
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) {
+        throw sessionError;
+      }
       const response = await fetch('/api/getJokes', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -63,10 +78,13 @@ function App() {
         const data = await response.json();
         setJokes(data);
       } else {
-        console.error('Error fetching jokes:', response.statusText);
+        const errorText = await response.text();
+        console.error('Error fetching jokes:', errorText);
+        Sentry.captureException(new Error(`Error fetching jokes: ${errorText}`));
       }
     } catch (error) {
       console.error('Error fetching jokes:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
@@ -75,10 +93,14 @@ function App() {
   const saveJoke = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) {
+        throw sessionError;
+      }
       const response = await fetch('/api/saveJoke', {
         method: 'POST',
         headers: {
@@ -88,13 +110,17 @@ function App() {
         body: JSON.stringify(newJoke()),
       });
       if (response.ok) {
-        setJokes([...jokes(), newJoke()]);
+        const savedJoke = await response.json();
+        setJokes([...jokes(), savedJoke]);
         setNewJoke({ setup: '', punchline: '' });
       } else {
-        console.error('Error saving joke');
+        const errorText = await response.text();
+        console.error('Error saving joke:', errorText);
+        Sentry.captureException(new Error(`Error saving joke: ${errorText}`));
       }
     } catch (error) {
       console.error('Error saving joke:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
@@ -102,10 +128,14 @@ function App() {
 
   const deleteJoke = async (id) => {
     setLoading(true);
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) {
+        throw sessionError;
+      }
       const response = await fetch('/api/deleteJoke', {
         method: 'DELETE',
         headers: {
@@ -117,10 +147,13 @@ function App() {
       if (response.ok) {
         setJokes(jokes().filter((joke) => joke.id !== id));
       } else {
-        console.error('Error deleting joke');
+        const errorText = await response.text();
+        console.error('Error deleting joke:', errorText);
+        Sentry.captureException(new Error(`Error deleting joke: ${errorText}`));
       }
     } catch (error) {
       console.error('Error deleting joke:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
@@ -142,6 +175,7 @@ function App() {
       setNewJoke(result);
     } catch (error) {
       console.error('Error creating event:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
@@ -156,6 +190,7 @@ function App() {
       setGeneratedImage(result);
     } catch (error) {
       console.error('Error generating image:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
@@ -170,6 +205,7 @@ function App() {
       setAudioUrl(result);
     } catch (error) {
       console.error('Error converting text to speech:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
@@ -185,6 +221,7 @@ function App() {
       setMarkdownText(result);
     } catch (error) {
       console.error('Error generating markdown:', error);
+      Sentry.captureException(error);
     } finally {
       setLoading(false);
     }
